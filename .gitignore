@@ -70,3 +70,19 @@ crashlytics-build.properties
 # Temporary auto-generated Android Assets
 /[Aa]ssets/[Ss]treamingAssets/aa.meta
 /[Aa]ssets/[Ss]treamingAssets/aa/*
+Assets/Data/*
+Assets/BuildReports.meta
+Assets/BuildReports
+Assets/Data/SaveData.json.meta
+Datasheet/*~*
+Assets/StreamingAssets/*
+Assets/DataBytes/*
+Server/bin/*
+Server/obj/*
+BlackSmith_Dev_*
+FontData/
+Assets/GUI PRO Kit - Casual Game/*
+Assets/GUI PRO Kit - Casual Game.meta
+*DoNotShip*
+!UnityPackage/*.unitypackage
+Output/*
