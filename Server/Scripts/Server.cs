@@ -35,6 +35,7 @@ class Server
         {
             Form.Inst.AddLog("서버시작");
             TcpServer.Init("127.0.0.1", 8888);
+            Database.Init();
             SetStatus(ServerStatus.Starting);
         }
         catch (Exception ex)

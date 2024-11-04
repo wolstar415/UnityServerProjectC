@@ -1,4 +1,5 @@
-﻿using MySql.Data.MySqlClient;
+﻿using Microsoft.Extensions.Hosting;
+using MySql.Data.MySqlClient;
 using System.Data;
 
 class Database
@@ -27,6 +28,8 @@ class Database
     public static async Task AccountUpdate(string id, string data)
     {
         var check = await Check(TableName.user, id);
+
+        Form.Inst.AddLog($"AccountUpdate , id {id} , data :{data}");
         if (check)
         {
             await Update(TableName.user, id, data);
@@ -34,6 +37,7 @@ class Database
         else
         {
             await Insert(TableName.user, id, data);
+            
         }
     }
     static async Task<MySqlConnection> OpenConn()
@@ -51,11 +55,7 @@ class Database
         // Basic
         option["Server"] = host;
         option["Port"] = 3306;
-#if DEBUG
-        option["Database"] = "blacksmith_debug";
-#else
-        option["Database"] = "blacksmith";
-#endif
+        option["Database"] = "test1";
         option["Uid"] = "root";
         option["Password"] = "123456";
 
