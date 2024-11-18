@@ -13,7 +13,10 @@ namespace GameServer.Scripts
         Login,
         JoinRoom,
         LeaveRoom,
-        Text
+        Text,
+        Turn,
+        Match,
+        
     }
     public class Packet
     {
@@ -80,11 +83,11 @@ namespace GameServer.Scripts
                             var dd2 = clientMap[match.Item2];
                             var dd2_name = clientNames[match.Item2];
 
-                            JoinRoom($"{dd_name}_{dd2_name}", dd);
-                            JoinRoom($"{dd_name}_{dd2_name}", dd2);
+                            JoinRoom($"{dd_name},{dd2_name}", dd);
+                            JoinRoom($"{dd_name},{dd2_name}", dd2);
 
-                            await SendDataToClientAsync(dd, new Packet { Type = PacketType.JoinRoom, Data = $"{dd_name}_{dd2_name}" });
-                            await SendDataToClientAsync(dd2, new Packet { Type = PacketType.JoinRoom, Data = $"{dd_name}_{dd2_name}" });
+                            await SendDataToClientAsync(dd, new Packet { Type = PacketType.JoinRoom, Data = $"{dd_name},{dd2_name}" });
+                            await SendDataToClientAsync(dd2, new Packet { Type = PacketType.JoinRoom, Data = $"{dd_name},{dd2_name}" });
 
                             Form.Inst.AddLog($"Matching  : {dd_name} / {dd2_name}");
                         }
@@ -104,7 +107,7 @@ namespace GameServer.Scripts
         {
             int playerScore = GetPlayerScore(player); // 플레이어 점수를 가져오는 메서드
             int initialScoreRange = 50; // 초기 매칭 범위
-            int maxScoreDifference = 300; // 최대 허용 매칭 범위
+            int maxScoreDifference = 1500; // 최대 허용 매칭 범위
             TimeSpan maxWaitTime = TimeSpan.FromSeconds(30); // 대기 시간이 30초가 넘으면 매칭 범위 확장
 
             DateTime playerEnqueueTime = GetPlayerEnqueueTime(player); // 플레이어가 대기열에 추가된 시간을 가져오는 메서드
@@ -126,7 +129,7 @@ namespace GameServer.Scripts
             if (!playerScores.ContainsKey(player))
             {
                 Random random = new Random();
-                playerScores[player] = random.Next(0, 1000); // 0부터 1000 사이의 무작위 점수 설정
+                playerScores[player] = random.Next(1000, 1000); // 0부터 1000 사이의 무작위 점수 설정
             }
             return playerScores[player];
         }
@@ -285,7 +288,7 @@ namespace GameServer.Scripts
         {
             Database.AccountUpdate(data, "Login");
             var e = sender.RemoteEndPoint;
-            AddPlayerToMatchmaking(e);
+            
             clientNames[e] = data;
             Console.WriteLine($"Client logged Id: {data}");
         }
@@ -309,13 +312,37 @@ namespace GameServer.Scripts
                     break;
 
                 case PacketType.LeaveRoom:
-                    string leaveRoomName = packet.Data;
-                    LeaveRoom(leaveRoomName, sender);
-                    break;
+                    string roomName3 = ExtractRoomNameFromPacket(packet);
+                    HandleChatMessage3(roomName3, packet.Data, sender);
+                    LeaveRoom(roomName3, sender);
 
+                    break;
+                case PacketType.Turn:
+                    string roomName2 = ExtractRoomNameFromPacket(packet);
+                    HandleChatMessage2(roomName2, packet.Data, sender);
+                    break;
+                case PacketType.Match:
+                    AddPlayerToMatchmaking(sender.RemoteEndPoint);
+                    //string roomName2 = ExtractRoomNameFromPacket(packet);
+                    //HandleChatMessage2(roomName2, packet.Data, sender);
+                    break;
                 default:
                     Console.WriteLine("Unknown packet type: " + packet.Type);
                     break;
+            }
+        }
+
+        private void OnTurn(string roomName, Socket client)
+        {
+            EndPoint endpoint = client.RemoteEndPoint;
+            if (endpoint != null)
+            {
+                if (rooms.ContainsKey(roomName))
+                {
+                    rooms[roomName].RemoveClient(client);
+                    clientMap.Remove(endpoint);
+                    Console.WriteLine($"Client left room: {roomName}");
+                }
             }
         }
 
@@ -330,6 +357,29 @@ namespace GameServer.Scripts
             if (rooms.ContainsKey(roomName))
             {
                 rooms[roomName].BroadcastMessage(message, sender, clientMap);
+            }
+            else
+            {
+                Console.WriteLine("Room not found: " + roomName);
+            }
+        }
+        private void HandleChatMessage2(string roomName, string message, Socket sender)
+        {
+            if (rooms.ContainsKey(roomName))
+            {
+                rooms[roomName].BroadcastMessage2(message, sender, clientMap);
+            }
+            else
+            {
+                Console.WriteLine("Room not found: " + roomName);
+            }
+        }
+
+        private void HandleChatMessage3(string roomName, string message, Socket sender)
+        {
+            if (rooms.ContainsKey(roomName))
+            {
+                rooms[roomName].BroadcastMessage3(message, sender, clientMap);
             }
             else
             {
@@ -697,6 +747,28 @@ public class Room
             if (clientMap.TryGetValue(endpoint, out Socket client))
             {
                 TcpServer.SendDataToClientAsync(client, new Packet { Type = PacketType.Text, Data = message });
+            }
+        }
+    }
+
+    public void BroadcastMessage2(string message, Socket sender, Dictionary<EndPoint, Socket> clientMap)
+    {
+        foreach (var endpoint in clientEndpoints)
+        {
+            if (clientMap.TryGetValue(endpoint, out Socket client))
+            {
+                TcpServer.SendDataToClientAsync(client, new Packet { Type = PacketType.Turn, Data = message });
+            }
+        }
+    }
+
+    public void BroadcastMessage3(string message, Socket sender, Dictionary<EndPoint, Socket> clientMap)
+    {
+        foreach (var endpoint in clientEndpoints)
+        {
+            if (clientMap.TryGetValue(endpoint, out Socket client))
+            {
+                TcpServer.SendDataToClientAsync(client, new Packet { Type = PacketType.LeaveRoom, Data = message });
             }
         }
     }

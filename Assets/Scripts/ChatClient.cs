@@ -10,9 +10,12 @@ using UnityEngine.UI;
 using Newtonsoft.Json;
 using ParrelSync;
 using PimDeWitte.UnityMainThreadDispatcher;
+using System.Text.RegularExpressions;
 
 public class UnityTcpClient : MonoBehaviour
 {
+
+    public static UnityTcpClient inst;
     private Socket clientSocket;
     private CancellationTokenSource cancellationTokenSource;
     private bool isConnected = false;
@@ -28,7 +31,10 @@ public class UnityTcpClient : MonoBehaviour
     private string roomName;
 
     private const int IntSize = sizeof(int);
-
+    private void Awake()
+    {
+        inst = this;
+    }
     void Start()
     {
         NickName = MyNickName;
@@ -41,19 +47,20 @@ public class UnityTcpClient : MonoBehaviour
         ConnectToServer("127.0.0.1", 8888);
 
         // 버튼 리스너 설정
-        button1.onClick.AddListener(OnButton);
+        //button1.onClick.AddListener(OnButton);
 
-        button2.onClick.AddListener(() =>
+        button1.onClick.AddListener(() =>
         {
-            Packet dataPacket = new Packet { Type = PacketType.JoinRoom, Data = $"1" };
+            Packet dataPacket = new Packet { Type = PacketType.Match, Data = NickName };
             SendDataToServer(dataPacket);
+            GameObject.Find("Match").SetActive(false);
         });
 
-        button3.onClick.AddListener(() =>
-        {
-            Packet dataPacket = new Packet { Type = PacketType.JoinRoom, Data = $"2" };
-            SendDataToServer(dataPacket);
-        });
+        //button3.onClick.AddListener(() =>
+        //{
+        //    Packet dataPacket = new Packet { Type = PacketType.JoinRoom, Data = $"2" };
+        //    SendDataToServer(dataPacket);
+        //});
     }
 
     private void OnButton()
@@ -70,6 +77,19 @@ public class UnityTcpClient : MonoBehaviour
             SendDataToServer(dataPacket);
             inputField.text = "";
         }
+    }
+
+    public void OnTurnSend(int row, int column, bool black)
+    {
+        int i = black == true ? 1 : 0;
+        Packet dataPacket = new Packet { Type = PacketType.Turn, Data = $"{roomName}:{row},{column},{i}" };
+        SendDataToServer(dataPacket);
+    }
+    public void OnGameEnd(bool isBlack)
+    {
+        int i = isBlack ? 1 : 0;
+        Packet dataPacket = new Packet { Type = PacketType.LeaveRoom, Data = $"{roomName}:{i}" };
+        SendDataToServer(dataPacket);
     }
 
     public async void ConnectToServer(string ipAddress, int port)
@@ -134,7 +154,6 @@ public class UnityTcpClient : MonoBehaviour
                 }
 
                 string receivedText = Encoding.UTF8.GetString(dataBuffer, 0, dataLength);
-
 
                 Packet packet = PacketSerializer.Deserialize(receivedText);
 
@@ -204,18 +223,42 @@ public class UnityTcpClient : MonoBehaviour
         switch (packet.Type)
         {
             case PacketType.Text:
-                // Data 형식: "roomName:message"
-                var splitData = packet.Data.Split(new char[] { ':' }, 2);
-                if (splitData.Length == 2)
                 {
-                    string receivedRoomName = splitData[0];
-                    string message = splitData[1];
-                    Debug.Log($"[룸: {receivedRoomName}] {message}");
-                    // UI 업데이트 또는 채팅 창에 메시지 표시
+                    // Data 형식: "roomName:message"
+                    var splitData = packet.Data.Split(new char[] { ':' }, 2);
+                    if (splitData.Length == 2)
+                    {
+                        string receivedRoomName = splitData[0];
+                        string message = splitData[1];
+                        Debug.Log($"[룸: {receivedRoomName}] {message}");
+                        // UI 업데이트 또는 채팅 창에 메시지 표시
+                    }
+                    else
+                    {
+                        Debug.LogWarning("잘못된 Text 패킷 데이터 형식.");
+                    }
                 }
-                else
+                
+                break;
+            case PacketType.Turn:
                 {
-                    Debug.LogWarning("잘못된 Text 패킷 데이터 형식.");
+                    // Data 형식: "roomName:message"
+                    var splitData = packet.Data.Split(new char[] { ':' }, 2);
+                    if (splitData.Length == 2)
+                    {
+                        string receivedRoomName = splitData[0];
+                        string message = splitData[1];
+
+                        string row = message.Split(',')[0];
+                        string column = message.Split(',')[1];
+                        string black = message.Split(',')[2];
+                        omokManager.inst.BallClick(int.Parse(row), int.Parse(column), int.Parse(black)==1);
+
+
+                    }
+                    else
+                    {
+                    }
                 }
                 break;
             case PacketType.Login:
@@ -224,11 +267,17 @@ public class UnityTcpClient : MonoBehaviour
                 break;
             case PacketType.JoinRoom:
                 roomName = packet.Data;
+
+                string name1 = roomName.Split(',')[0];
+                string name2 = roomName.Split(',')[1];
+                omokManager.inst.OnGameStart(NickName == name1);
                 Debug.Log("룸 참여 응답: " + packet.Data);
                 // 룸 참여 응답 처리, 예: UI 업데이트
                 break;
             case PacketType.LeaveRoom:
                 Debug.Log("룸 탈퇴 응답: " + packet.Data);
+                string d = packet.Data.Split(":")[1];
+                omokManager.inst.OnGameEnd(int.Parse(d) ==1, roomName);
                 roomName = null;
                 // 룸 탈퇴 응답 처리, 예: UI 업데이트
                 break;
@@ -248,6 +297,7 @@ public class UnityTcpClient : MonoBehaviour
 
         try
         {
+            Debug.Log($"보냄 : {packet.Type}//{packet.Data}");
             // 패킷을 JSON으로 직렬화
             string json = PacketSerializer.Serialize(packet);
             byte[] data = Encoding.UTF8.GetBytes(json);
@@ -259,7 +309,7 @@ public class UnityTcpClient : MonoBehaviour
             await clientSocket.SendAsync(new ArraySegment<byte>(dataLength), SocketFlags.None);
             await clientSocket.SendAsync(new ArraySegment<byte>(data), SocketFlags.None);
 
-            Debug.Log("서버로 패킷 전송: " + data.Length);
+            //Debug.Log("서버로 패킷 전송: " + data.Length);
         }
         catch (Exception ex)
         {
@@ -306,7 +356,9 @@ public class UnityTcpClient : MonoBehaviour
         Login,
         JoinRoom,
         LeaveRoom,
-        Text
+        Text,
+                    Turn,
+        Match,
     }
 
     public class Packet
